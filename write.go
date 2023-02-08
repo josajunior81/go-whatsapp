@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
@@ -11,8 +12,8 @@ import (
 
 	"github.com/Rhymen/go-whatsapp/binary"
 	"github.com/Rhymen/go-whatsapp/crypto/cbc"
-	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
+	"nhooyr.io/websocket"
 )
 
 func (wac *Conn) addListener(ch chan string, messageTag string) {
@@ -27,7 +28,7 @@ func (wac *Conn) removeListener(answerMessageTag string) {
 	wac.listener.Unlock()
 }
 
-//writeJson enqueues a json message into the writeChan
+// writeJson enqueues a json message into the writeChan
 func (wac *Conn) writeJson(data []interface{}) (<-chan string, error) {
 
 	ch := make(chan string, 1)
@@ -52,7 +53,7 @@ func (wac *Conn) writeJson(data []interface{}) (<-chan string, error) {
 
 	wac.addListener(ch, messageTag)
 
-	err = wac.write(websocket.TextMessage, bytes)
+	err = wac.write(websocket.MessageText, bytes)
 	if err != nil {
 		close(ch)
 		wac.removeListener(messageTag)
@@ -87,7 +88,7 @@ func (wac *Conn) writeBinary(node binary.Node, metric metric, flag flag, message
 
 	wac.addListener(ch, messageTag)
 
-	err = wac.write(websocket.BinaryMessage, bytes)
+	err = wac.write(websocket.MessageBinary, bytes)
 	if err != nil {
 		close(ch)
 		wac.removeListener(messageTag)
@@ -104,7 +105,7 @@ func (wac *Conn) sendKeepAlive() error {
 	wac.addListener(respChan, "!")
 
 	bytes := []byte("?,,")
-	err := wac.write(websocket.TextMessage, bytes)
+	err := wac.write(websocket.MessageText, bytes)
 	if err != nil {
 		close(respChan)
 		wac.removeListener("!")
@@ -127,8 +128,8 @@ func (wac *Conn) sendKeepAlive() error {
 }
 
 /*
-	When phone is unreachable, WhatsAppWeb sends ["admin","test"] time after time to try a successful contact.
-	Tested with Airplane mode and no connection at all.
+When phone is unreachable, WhatsAppWeb sends ["admin","test"] time after time to try a successful contact.
+Tested with Airplane mode and no connection at all.
 */
 func (wac *Conn) sendAdminTest() (bool, error) {
 	data := []interface{}{"admin", "test"}
@@ -156,14 +157,14 @@ func (wac *Conn) sendAdminTest() (bool, error) {
 	}
 }
 
-func (wac *Conn) write(messageType int, data []byte) error {
+func (wac *Conn) write(messageType websocket.MessageType, data []byte) error {
 
 	if wac == nil || wac.ws == nil {
 		return ErrInvalidWebsocket
 	}
 
 	wac.ws.Lock()
-	err := wac.ws.conn.WriteMessage(messageType, data)
+	err := wac.ws.conn.Write(context.Background(), messageType, data)
 	wac.ws.Unlock()
 
 	if err != nil {

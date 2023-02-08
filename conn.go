@@ -1,15 +1,16 @@
-//Package whatsapp provides a developer API to interact with the WhatsAppWeb-Servers.
+// Package whatsapp provides a developer API to interact with the WhatsAppWeb-Servers.
 package whatsapp
 
 import (
+	"context"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
+	"nhooyr.io/websocket"
 )
 
 type metric byte
@@ -125,29 +126,30 @@ func NewConn(timeout time.Duration) (*Conn, error) {
 func NewConnWithProxy(timeout time.Duration, proxy func(*http.Request) (*url.URL, error)) (*Conn, error) {
 	return NewConnWithOptions(&Options{
 		Timeout: timeout,
-		Proxy: proxy,
+		Proxy:   proxy,
 	})
 }
 
 // NewConnWithOptions Create a new connect with a given options.
 type Options struct {
-	Proxy            func(*http.Request) (*url.URL, error)
-	Timeout          time.Duration
-	Handler          []Handler
-	ShortClientName  string
-	LongClientName   string
-	ClientVersion    string
-	Store            *Store
+	Proxy           func(*http.Request) (*url.URL, error)
+	Timeout         time.Duration
+	Handler         []Handler
+	ShortClientName string
+	LongClientName  string
+	ClientVersion   string
+	Store           *Store
 }
+
 func NewConnWithOptions(opt *Options) (*Conn, error) {
 	if opt == nil {
 		return nil, ErrOptionsNotProvided
 	}
 	wac := &Conn{
-		handler:    make([]Handler, 0),
-		msgCount:   0,
-		msgTimeout: opt.Timeout,
-		Store:      newStore(),
+		handler:         make([]Handler, 0),
+		msgCount:        0,
+		msgTimeout:      opt.Timeout,
+		Store:           newStore(),
 		longClientName:  "github.com/Rhymen/go-whatsapp",
 		shortClientName: "go-whatsapp",
 		clientVersion:   "0.1.0",
@@ -185,29 +187,32 @@ func (wac *Conn) connect() (err error) {
 		}
 	}()
 
-	dialer := &websocket.Dialer{
-		ReadBufferSize:   0,
-		WriteBufferSize:  0,
-		HandshakeTimeout: wac.msgTimeout,
-		Proxy:            wac.Proxy,
-	}
+	// dialer := &websocket.Dialer{
+	// 	ReadBufferSize:   0,
+	// 	WriteBufferSize:  0,
+	// 	HandshakeTimeout: wac.msgTimeout,
+	// 	Proxy:            wac.Proxy,
+	// }
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
 	headers := http.Header{"Origin": []string{"https://web.whatsapp.com"}}
-	wsConn, _, err := dialer.Dial("wss://web.whatsapp.com/ws", headers)
+	wsConn, _, err := websocket.Dial(ctx, "wss://web.whatsapp.com/ws", &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		return errors.Wrap(err, "couldn't dial whatsapp web websocket")
 	}
 
-	wsConn.SetCloseHandler(func(code int, text string) error {
-		// from default CloseHandler
-		message := websocket.FormatCloseMessage(code, "")
-		err := wsConn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
+	// wsConn.SetCloseHandler(func(code int, text string) error {
+	// 	// from default CloseHandler
+	// 	message := websocket.FormatCloseMessage(code, "")
+	// 	err := wsConn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
 
-		// our close handling
-		_, _ = wac.Disconnect()
-		wac.handle(&ErrConnectionClosed{Code: code, Text: text})
-		return err
-	})
+	// 	// our close handling
+	// 	_, _ = wac.Disconnect()
+	// 	wac.handle(&ErrConnectionClosed{Code: code, Text: text})
+	// 	return err
+	// })
 
 	wac.ws = &websocketWrapper{
 		conn:  wsConn,
@@ -237,7 +242,7 @@ func (wac *Conn) Disconnect() (Session, error) {
 	close(wac.ws.close) //signal close
 	wac.wg.Wait()       //wait for close
 
-	err := wac.ws.conn.Close()
+	err := wac.ws.conn.Close(1000, "")
 	wac.ws = nil
 
 	if wac.session == nil {
@@ -289,7 +294,7 @@ func (wac *Conn) GetConnected() bool {
 	return wac.connected
 }
 
-//IsLoggedIn returns whether the you are logged in or not
+// IsLoggedIn returns whether the you are logged in or not
 func (wac *Conn) IsLoggedIn() bool {
 	return wac.loggedIn
 }

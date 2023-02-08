@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
@@ -12,8 +13,8 @@ import (
 
 	"github.com/Rhymen/go-whatsapp/binary"
 	"github.com/Rhymen/go-whatsapp/crypto/cbc"
-	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
+	"nhooyr.io/websocket"
 )
 
 func (wac *Conn) readPump() {
@@ -23,14 +24,14 @@ func (wac *Conn) readPump() {
 	}()
 
 	var readErr error
-	var msgType int
+	var msgType websocket.MessageType
 	var reader io.Reader
 
 	for {
 		readerFound := make(chan struct{})
 		go func() {
 			if wac.ws != nil {
-				msgType, reader, readErr = wac.ws.conn.NextReader()
+				msgType, reader, readErr = wac.ws.conn.Reader(context.Background())
 			}
 			close(readerFound)
 		}()
@@ -45,7 +46,7 @@ func (wac *Conn) readPump() {
 				wac.handle(errors.Wrap(err, "error reading message from Reader"))
 				continue
 			}
-			err = wac.processReadData(msgType, msg)
+			err = wac.processReadData(int(msgType), msg)
 			if err != nil {
 				wac.handle(errors.Wrap(err, "error processing data"))
 			}
@@ -85,7 +86,7 @@ func (wac *Conn) processReadData(msgType int, msg []byte) error {
 		listener <- data[1]
 		close(listener)
 		wac.removeListener(data[0])
-	} else if msgType == websocket.BinaryMessage {
+	} else if msgType == int(websocket.MessageBinary) {
 		wac.loginSessionLock.RLock()
 		sess := wac.session
 		wac.loginSessionLock.RUnlock()

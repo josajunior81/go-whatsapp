@@ -6,6 +6,9 @@ require (
 	github.com/pkg/errors v0.8.1
 	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
 	google.golang.org/protobuf v1.25.0
+	nhooyr.io/websocket v1.8.7
 )
 
-go 1.13
+require github.com/klauspost/compress v1.10.3 // indirect
+
+go 1.20
